@@ -28,8 +28,19 @@ class WeatherAPI {
       return this.processWeatherData(data, dateString);
     } catch (error) {
       console.error('Error fetching weather data:', error);
-      return null;
+      if (error.message && error.message.includes('404')) {
+        throw new Error('Weather data not available for this date. Historical data may be limited.');
+      }
+      throw new Error('Unable to fetch weather data. Please check your connection and try again.');
     }
+  }
+
+  celsiusToFahrenheit(celsius) {
+    return Math.round((celsius * 9/5) + 32);
+  }
+
+  kmhToMph(kmh) {
+    return Math.round(kmh * 0.621371);
   }
 
   processWeatherData(data, dateString) {
@@ -41,24 +52,28 @@ class WeatherAPI {
     const hourly = data.hourly;
     const index = 0;
 
-    const avgTemp = this.calculateAverage(hourly.temperature_2m);
+    const avgTempC = this.calculateAverage(hourly.temperature_2m);
     const avgHumidity = this.calculateAverage(hourly.relativehumidity_2m);
     const avgPressure = this.calculateAverage(hourly.pressure_msl);
     const avgVisibility = this.calculateAverage(hourly.visibility);
     const maxUV = Math.max(...hourly.uv_index);
 
+    const highC = daily.temperature_2m_max[index];
+    const lowC = daily.temperature_2m_min[index];
+    const windSpeedKmh = daily.windspeed_10m_max[index];
+
     return {
       date: dateString,
       temperature: {
-        high: daily.temperature_2m_max[index],
-        low: daily.temperature_2m_min[index],
-        average: avgTemp
+        high: this.celsiusToFahrenheit(highC),
+        low: this.celsiusToFahrenheit(lowC),
+        average: avgTempC ? this.celsiusToFahrenheit(avgTempC) : null
       },
       condition: this.getWeatherCondition(daily.weathercode[index]),
       weatherCode: daily.weathercode[index],
       precipitation: daily.precipitation_sum[index] || 0,
       wind: {
-        speed: daily.windspeed_10m_max[index],
+        speed: this.kmhToMph(windSpeedKmh),
         direction: daily.winddirection_10m_dominant[index]
       },
       humidity: avgHumidity,
@@ -117,8 +132,8 @@ class WeatherAPI {
     return `
       <div class="weather-info">
         <p><strong>Condition:</strong> ${weatherData.condition}</p>
-        <p><strong>Temperature:</strong> ${weatherData.temperature.high}°C / ${weatherData.temperature.low}°C</p>
-        <p><strong>Wind:</strong> ${weatherData.wind.speed} km/h</p>
+        <p><strong>Temperature:</strong> ${weatherData.temperature.high}°F / ${weatherData.temperature.low}°F</p>
+        <p><strong>Wind:</strong> ${weatherData.wind.speed} mph</p>
         ${weatherData.precipitation > 0 ? `<p><strong>Precipitation:</strong> ${weatherData.precipitation} mm</p>` : ''}
         <p><strong>Humidity:</strong> ${weatherData.humidity}%</p>
       </div>

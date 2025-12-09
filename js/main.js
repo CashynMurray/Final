@@ -20,6 +20,23 @@ function init() {
 }
 
 function setupEventListeners() {
+  const menuToggle = document.querySelector('.menu-toggle');
+  const navMenu = document.querySelector('.nav-menu');
+  
+  if (menuToggle && navMenu) {
+    menuToggle.addEventListener('click', () => {
+      navMenu.classList.toggle('active');
+      menuToggle.classList.toggle('active');
+    });
+    
+    document.querySelectorAll('.nav-link').forEach(link => {
+      link.addEventListener('click', () => {
+        navMenu.classList.remove('active');
+        menuToggle.classList.remove('active');
+      });
+    });
+  }
+
   document.querySelectorAll('.nav-link').forEach(link => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
@@ -51,6 +68,19 @@ function setupEventListeners() {
 
   if (locationForm) {
     locationForm.addEventListener('submit', handleFormSubmit);
+    
+    const locationNameInput = document.getElementById('locationName');
+    const dateInput = document.getElementById('fishingDate');
+    
+    if (locationNameInput) {
+      locationNameInput.addEventListener('blur', validateLocationName);
+      locationNameInput.addEventListener('input', clearFieldError);
+    }
+    
+    if (dateInput) {
+      dateInput.addEventListener('change', validateDate);
+      dateInput.setAttribute('max', new Date().toISOString().split('T')[0]);
+    }
   }
 
   if (modal) {
@@ -73,6 +103,7 @@ function setupEventListeners() {
   const searchInput = document.getElementById('searchInput');
   const speciesFilter = document.getElementById('speciesFilter');
   const dateFilter = document.getElementById('dateFilter');
+  const sortSelect = document.getElementById('sortSelect');
 
   if (searchInput) {
     searchInput.addEventListener('input', applyFilters);
@@ -88,6 +119,10 @@ function setupEventListeners() {
 
   if (dateFilter) {
     dateFilter.addEventListener('change', applyFilters);
+  }
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', applyFilters);
   }
 
   const exportBtn = document.getElementById('exportBtn');
@@ -148,7 +183,14 @@ function openLocationModal(lat, lng, entry = null) {
     currentEditingEntry = null;
     modalTitle.textContent = 'Add Fishing Location';
     form.reset();
-    document.getElementById('fishingDate').value = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('fishingDate');
+    dateInput.value = new Date().toISOString().split('T')[0];
+    dateInput.setAttribute('max', new Date().toISOString().split('T')[0]);
+  }
+
+  const dateInput = document.getElementById('fishingDate');
+  if (dateInput && !dateInput.getAttribute('max')) {
+    dateInput.setAttribute('max', new Date().toISOString().split('T')[0]);
   }
 
   modal.classList.add('active');
@@ -158,25 +200,115 @@ function closeLocationModal() {
   const modal = document.getElementById('locationModal');
   modal.classList.remove('active');
   currentEditingEntry = null;
+  
+  const form = document.getElementById('locationForm');
+  if (form) {
+    form.reset();
+    clearAllFieldErrors();
+  }
+}
+
+function validateLocationName() {
+  const input = document.getElementById('locationName');
+  const value = input.value.trim();
+  
+  if (!value) {
+    showFieldError(input, 'Location name is required');
+    return false;
+  }
+  
+  if (value.length < 2) {
+    showFieldError(input, 'Location name must be at least 2 characters');
+    return false;
+  }
+  
+  clearFieldError(input);
+  return true;
+}
+
+function validateDate() {
+  const input = document.getElementById('fishingDate');
+  const value = input.value;
+  
+  if (!value) {
+    showFieldError(input, 'Date is required');
+    return false;
+  }
+  
+  const selectedDate = new Date(value);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  
+  if (selectedDate > today) {
+    showFieldError(input, 'Date cannot be in the future');
+    return false;
+  }
+  
+  clearFieldError(input);
+  return true;
+}
+
+function showFieldError(input, message) {
+  clearFieldError(input);
+  input.classList.add('error');
+  
+  let errorMsg = input.parentElement.querySelector('.field-error');
+  if (!errorMsg) {
+    errorMsg = document.createElement('span');
+    errorMsg.className = 'field-error';
+    input.parentElement.appendChild(errorMsg);
+  }
+  errorMsg.textContent = message;
+}
+
+function clearFieldError(input) {
+  if (input) {
+    input.classList.remove('error');
+    const errorMsg = input.parentElement.querySelector('.field-error');
+    if (errorMsg) {
+      errorMsg.remove();
+    }
+  }
+}
+
+function clearAllFieldErrors() {
+  const form = document.getElementById('locationForm');
+  if (form) {
+    const errorInputs = form.querySelectorAll('.error');
+    errorInputs.forEach(input => input.classList.remove('error'));
+    const errorMessages = form.querySelectorAll('.field-error');
+    errorMessages.forEach(msg => msg.remove());
+  }
 }
 
 async function handleFormSubmit(e) {
   e.preventDefault();
 
+  if (!validateLocationName() || !validateDate()) {
+    return;
+  }
+
+  const locationName = document.getElementById('locationName').value.trim();
+  const date = document.getElementById('fishingDate').value;
+
   const submitBtn = e.target.querySelector('button[type="submit"]');
-  const originalText = submitBtn.textContent;
+  const originalText = submitBtn.innerHTML;
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Loading weather data...';
+  submitBtn.innerHTML = '<span class="loading"></span> Loading weather data...';
 
   const lat = parseFloat(document.getElementById('latitude').value);
   const lng = parseFloat(document.getElementById('longitude').value);
-  const date = document.getElementById('fishingDate').value;
 
   let weatherData = null;
   try {
     weatherData = await weatherAPI.fetchWeatherData(lat, lng, date);
+    if (!weatherData) {
+      showMessage('Weather data unavailable for this date. Entry saved without weather information.', 'warning');
+    }
   } catch (error) {
     console.error('Error fetching weather:', error);
+    const errorMessage = error.message || 'Unable to fetch weather data';
+    showMessage(`${errorMessage}. Entry will be saved without weather information.`, 'warning');
   }
 
   const formData = {
@@ -200,8 +332,9 @@ async function handleFormSubmit(e) {
   }
 
   submitBtn.disabled = false;
-  submitBtn.textContent = originalText;
+  submitBtn.innerHTML = originalText;
   closeLocationModal();
+  showMessage(currentEditingEntry ? 'Entry updated successfully!' : 'Fishing entry saved successfully!', 'success');
   loadEntries();
   
   const activeView = document.querySelector('.view.active');
@@ -373,9 +506,41 @@ function displayFilteredEntries(entries) {
     return;
   }
 
-  const sortedEntries = [...entries].sort((a, b) => 
-    new Date(b.date) - new Date(a.date)
-  );
+  const sortSelect = document.getElementById('sortSelect');
+  const sortValue = sortSelect ? sortSelect.value : 'date-desc';
+  
+  let sortedEntries = [...entries];
+  
+  switch (sortValue) {
+    case 'date-desc':
+      sortedEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+      break;
+    case 'date-asc':
+      sortedEntries.sort((a, b) => new Date(a.date) - new Date(b.date));
+      break;
+    case 'location-asc':
+      sortedEntries.sort((a, b) => {
+        const nameA = (a.locationName || 'Unnamed').toLowerCase();
+        const nameB = (b.locationName || 'Unnamed').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      break;
+    case 'location-desc':
+      sortedEntries.sort((a, b) => {
+        const nameA = (a.locationName || 'Unnamed').toLowerCase();
+        const nameB = (b.locationName || 'Unnamed').toLowerCase();
+        return nameB.localeCompare(nameA);
+      });
+      break;
+    case 'quantity-desc':
+      sortedEntries.sort((a, b) => (b.quantity || 0) - (a.quantity || 0));
+      break;
+    case 'quantity-asc':
+      sortedEntries.sort((a, b) => (a.quantity || 0) - (b.quantity || 0));
+      break;
+    default:
+      sortedEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
 
   container.innerHTML = sortedEntries.map(entry => `
     <div class="entry-item">
@@ -387,8 +552,8 @@ function displayFilteredEntries(entries) {
         ${entry.weather ? `
           <div class="weather-info">
             <p><strong>Weather:</strong> ${entry.weather.condition} - 
-            ${entry.weather.temperature.high}°C / ${entry.weather.temperature.low}°C</p>
-            <p>Wind: ${entry.weather.wind.speed} km/h</p>
+            ${entry.weather.temperature.high}°F / ${entry.weather.temperature.low}°F</p>
+            <p>Wind: ${entry.weather.wind.speed} mph</p>
           </div>
         ` : ''}
         ${entry.notes ? `<p>${entry.notes}</p>` : ''}
@@ -500,7 +665,7 @@ async function handleImport(event) {
   event.target.value = '';
 }
 
-function showMessage(text, type) {
+function showMessage(text, type = 'success') {
   const existing = document.querySelector('.message');
   if (existing) {
     existing.remove();
@@ -509,6 +674,8 @@ function showMessage(text, type) {
   const message = document.createElement('div');
   message.className = `message message-${type}`;
   message.textContent = text;
+  message.setAttribute('role', 'alert');
+  message.setAttribute('aria-live', 'polite');
   
   const main = document.querySelector('main');
   if (main) {
@@ -516,7 +683,7 @@ function showMessage(text, type) {
     
     setTimeout(() => {
       message.remove();
-    }, 3000);
+    }, type === 'error' ? 5000 : 3000);
   }
 }
 
@@ -583,8 +750,8 @@ window.viewLocationDetails = function(lat, lng) {
               ${entry.weather ? `
                 <div class="weather-info">
                   <p><strong>Weather:</strong> ${entry.weather.condition}</p>
-                  <p>Temperature: ${entry.weather.temperature.high}°C / ${entry.weather.temperature.low}°C</p>
-                  <p>Wind: ${entry.weather.wind.speed} km/h</p>
+                  <p>Temperature: ${entry.weather.temperature.high}°F / ${entry.weather.temperature.low}°F</p>
+                  <p>Wind: ${entry.weather.wind.speed} mph</p>
                   ${entry.weather.precipitation > 0 ? `<p>Precipitation: ${entry.weather.precipitation} mm</p>` : ''}
                 </div>
               ` : ''}

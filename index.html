@@ -72,6 +72,14 @@
                         <small id="speciesFilterHint" style="display: block; margin-top: 0.25rem; color: #6B7280; font-size: 12px;">Hold Ctrl/Cmd to select multiple</small>
                     </div>
                     <input type="date" id="dateFilter" class="filter-date" placeholder="Filter by date">
+                    <select id="sortSelect" class="filter-select">
+                        <option value="date-desc">Date (Newest First)</option>
+                        <option value="date-asc">Date (Oldest First)</option>
+                        <option value="location-asc">Location (A-Z)</option>
+                        <option value="location-desc">Location (Z-A)</option>
+                        <option value="quantity-desc">Most Fish Caught</option>
+                        <option value="quantity-asc">Least Fish Caught</option>
+                    </select>
                 </div>
                 <div id="history-entries" class="entries-list" role="list" aria-live="polite">
                     <p class="empty-message" role="status">No fishing entries found.</p>
